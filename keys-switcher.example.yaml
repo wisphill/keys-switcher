@@ -1,0 +1,11 @@
+# Keep your real configuration outside version control (for example ~/.config/keys-switcher/config.yaml).
+# The remote supports Go template interpolation: {{.APIKey}}.
+default_profile: primary
+anthropic_base_url: "http://127.0.0.1:3817/anthropic"
+profiles:
+  primary:
+    sotatek_api_key: "replace-with-primary-key"
+    remote: "https://git.example.com/team/repository.git?api_key={{.APIKey}}"
+  secondary:
+    sotatek_api_key: "replace-with-secondary-key"
+    remote: "https://git.example.com/team/repository.git?api_key={{.APIKey}}"
