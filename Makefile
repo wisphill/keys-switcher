@@ -1,4 +1,13 @@
+ifeq ($(OS),Windows_NT)
+APP := ks.exe
+INSTALL_COMMAND := ./$(APP) install
+UNINSTALL_COMMAND := ./$(APP) uninstall
+else
 APP := ks
+INSTALL_COMMAND := sudo ./$(APP) install
+UNINSTALL_COMMAND := sudo ./$(APP) uninstall
+endif
+
 ABS_APP := $(abspath $(APP))
 ZSH_INIT := eval "$$($(ABS_APP) shell-init --binary $(ABS_APP) zsh)"
 
@@ -12,10 +21,10 @@ test: build
 	GOOS=windows GOARCH=amd64 go build -o /tmp/ks.exe .
 
 install: build
-	sudo ./$(APP) install
+	$(INSTALL_COMMAND)
 
 uninstall:
-	sudo $(APP) uninstall
+	$(UNINSTALL_COMMAND)
 
 print-zsh-init: build
 	./$(APP) shell-init zsh
