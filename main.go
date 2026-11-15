@@ -621,7 +621,7 @@ func setWindowsUserEnvironment(active ActiveEnvironment) error {
 	// User scope needs no Administrator access, has no setx length limitation,
 	// and is inherited by processes started after the environment change.
 	script := "[Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL'," + powershellQuote(active.AnthropicBaseURL) + ",'User'); " +
-		"[Environment]::SetEnvironmentVariable('ANTHROPIC_AUTH_TOKEN'," + powershellQuote(active.AnthropicAuthToken) + ",'User')"
+		"[Environment]::SetEnvironmentVariable('ANTHROPIC_AUTH_TOKEN'," + powershellQuote(active.AnthropicAuthToken) + ",'User'); " + windowsEnvironmentChangeNotification
 	if err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Run(); err != nil {
 		return fmt.Errorf("persist Anthropic environment for the Windows user: %w", err)
 	}
@@ -714,11 +714,11 @@ func printShellInit(args []string) error {
 	case "zsh", "bash", "sh":
 		command := shellQuote(*binary)
 		fmt.Printf(`ks() {
-  %s "$@"
+  command %s "$@"
   local ks_status=$?
   if [ "$ks_status" -eq 0 ] && [ "$1" = "aikeys" ]; then
     case "$2" in
-      ""|switch|--*) eval "$(%s env)" ;;
+      ""|switch|--*) eval "$(command %s env)" ;;
     esac
   fi
   return "$ks_status"
@@ -728,14 +728,16 @@ func printShellInit(args []string) error {
 	case "powershell", "pwsh":
 		command := powershellQuote(*binary)
 		fmt.Printf(`function ks {
-  & %s @args
+  $ksBinary = Get-Command %s -CommandType Application | Select-Object -First 1 -ExpandProperty Source
+  if (-not $ksBinary) { throw 'ks executable was not found on PATH.' }
+  & $ksBinary @args
   $ksStatus = $LASTEXITCODE
   if ($ksStatus -eq 0 -and $args.Count -ge 1 -and $args[0] -eq 'aikeys' -and ($args.Count -eq 1 -or $args[1] -eq 'switch' -or $args[1].StartsWith('-'))) {
-    & %s env | Invoke-Expression
+    & $ksBinary env | Invoke-Expression
   }
   $global:LASTEXITCODE = $ksStatus
 }
-`, command, command)
+`, command)
 		return nil
 	default:
 		return fmt.Errorf("unsupported shell %q", shell)
@@ -938,7 +940,15 @@ func copyCurrentExecutable(target string) error {
 
 func updateWindowsMachinePath(directory string, add bool) error {
 	quotedDir := strings.ReplaceAll(directory, "'", "''")
-	const notifyPathChange = `
+	if add {
+		script := "$p=[Environment]::GetEnvironmentVariable('Path','Machine'); if (($p -split ';') -notcontains '" + quotedDir + "') {[Environment]::SetEnvironmentVariable('Path',($p.TrimEnd(';')+';" + quotedDir + "'),'Machine'); " + windowsEnvironmentChangeNotification + "}"
+		return exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Run()
+	}
+	script := "$p=[Environment]::GetEnvironmentVariable('Path','Machine'); [Environment]::SetEnvironmentVariable('Path',(($p -split ';' | Where-Object {$_ -and $_ -ne '" + quotedDir + "'}) -join ';'),'Machine'); " + windowsEnvironmentChangeNotification
+	return exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Run()
+}
+
+const windowsEnvironmentChangeNotification = `
 $signature = @'
 [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
 public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);
@@ -947,13 +957,6 @@ $native = Add-Type -MemberDefinition $signature -Name 'KeysSwitcherNative' -Name
 $result = [UIntPtr]::Zero
 [void]$native::SendMessageTimeout([IntPtr]0xffff, 0x001a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result)
 `
-	if add {
-		script := "$p=[Environment]::GetEnvironmentVariable('Path','Machine'); if (($p -split ';') -notcontains '" + quotedDir + "') {[Environment]::SetEnvironmentVariable('Path',($p.TrimEnd(';')+';" + quotedDir + "'),'Machine'); " + notifyPathChange + "}"
-		return exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Run()
-	}
-	script := "$p=[Environment]::GetEnvironmentVariable('Path','Machine'); [Environment]::SetEnvironmentVariable('Path',(($p -split ';' | Where-Object {$_ -and $_ -ne '" + quotedDir + "'}) -join ';'),'Machine'); " + notifyPathChange
-	return exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Run()
-}
 
 // ensureWindowsMachineScope relaunches this executable through UAC when it
 // needs to write Program Files or the machine-wide PATH. The bool is true

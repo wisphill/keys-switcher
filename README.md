@@ -128,6 +128,11 @@ On PowerShell, refresh the current terminal with:
 ks env | Invoke-Expression
 ```
 
+Windows also persists these values in the current user's environment and
+notifies Windows, so newly opened terminals inherit them. A running terminal
+still needs the command above (or the PowerShell wrapper below), because a
+child process cannot modify its parent shell's environment.
+
 To make this automatic after every successful `ks aikeys switch`, install the
 small shell wrapper once. On macOS with zsh:
 
