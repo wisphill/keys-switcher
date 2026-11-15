@@ -116,10 +116,10 @@ macOS also updates the current user's `launchctl` environment. Windows uses
 PowerShell/.NET to persist the values in the current user's environment (no
 Administrator access or `setx` required); newly started Windows apps inherit
 them. A process cannot alter the environment of the shell that launched it.
-After switching, refresh the current macOS/Linux shell with:
+After switching, refresh the current Bash or zsh session with:
 
 ```sh
-eval "$(ks env)"
+eval "$(ks env bash)"
 ```
 
 On PowerShell, refresh the current terminal with:
@@ -134,7 +134,18 @@ still needs the command above (or the PowerShell wrapper below), because a
 child process cannot modify its parent shell's environment.
 
 To make this automatic after every successful `ks aikeys switch`, install the
-small shell wrapper once. On macOS with zsh:
+shell integration once:
+
+```sh
+make install-shell
+```
+
+On Windows, this requests UAC once, installs `ks` machine-wide, and configures
+Windows PowerShell plus Git Bash for every local user profile. On macOS it
+configures zsh, and on Linux it configures Bash. Open a new shell to load the
+changes.
+
+For manual setup on macOS with zsh:
 
 ```sh
 echo 'eval "$(ks shell-init zsh)"' >> ~/.zshrc
@@ -144,6 +155,14 @@ source ~/.zshrc
 When using the source checkout without system installation, prefer
 `make enable-zsh-auto-env`: it writes the checkout's absolute `ks` path into
 `~/.zshrc`, so `ks` does not need to be in `PATH`.
+
+For interactive Git Bash over SSH on Windows, run
+`make enable-bash-auto-env` on the SSH host as the account that will use `ks`.
+It adds the integration to that account's `~/.bashrc` once, using the absolute
+path to the built binary in the checkout. Run `source ~/.bashrc` to activate it
+in the current shell. New shells that read `~/.bashrc` load the last selected
+key at startup. For Bash login shells, source `~/.bashrc` from `~/.bash_profile`
+if needed. Override `GIT_BASH` when Git is installed at a custom path.
 
 On PowerShell, add this to your `$PROFILE` and restart the terminal:
 
@@ -155,7 +174,7 @@ ks shell-init powershell | Add-Content $PROFILE
 If GNU Make is available on Windows, `make enable-powershell-auto-env` performs
 the same setup idempotently (it will not append the wrapper twice).
 
-The wrapper invokes the real `ks` binary first, then runs `eval "$(ks env)"`
+The wrapper invokes the real `ks` binary first, then runs `eval "$(ks env bash)"`
 after a successful `ks aikeys` interactive selection or `ks aikeys switch`.
 
 Never commit or print `~/.ks/environment.json`.

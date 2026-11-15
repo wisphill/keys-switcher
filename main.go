@@ -67,7 +67,7 @@ func main() {
 	case "git":
 		err = runGit(os.Args[2:])
 	case "env":
-		err = printEnvironment()
+		err = printEnvironment(os.Args[2:])
 	case "shell-init":
 		err = printShellInit(os.Args[2:])
 	case "install":
@@ -97,7 +97,7 @@ Usage:
   ks aikeys status [--remote NAME]
   ks aikeys add [--config FILE] [--name PROFILE] [--origin URL] [--key API_KEY]
   ks aikeys list [--config FILE]
-  ks env
+  ks env [bash|powershell]
   ks shell-init [zsh|bash|powershell]
   ks install | ks uninstall
 
@@ -445,7 +445,7 @@ func switchRemote(args []string) error {
 		return err
 	}
 	fmt.Printf("Switched remote %q to profile %q. Original URL is stored in %s.\n", remote, profileName, backupLocation)
-	fmt.Fprintln(os.Stderr, `Environment updated. For this already-open shell, run: eval "$(ks env)"`)
+	fmt.Fprintln(os.Stderr, `Environment updated. For this already-open shell, run: eval "$(ks env bash)"`)
 	return nil
 }
 
@@ -678,12 +678,25 @@ func loadActiveEnvironment() (ActiveEnvironment, error) {
 	return active, nil
 }
 
-func printEnvironment() error {
+func printEnvironment(args []string) error {
+	shell := "bash"
+	if runtime.GOOS == "windows" {
+		shell = "powershell"
+	}
+	if len(args) > 1 {
+		return errors.New("env accepts at most one shell name")
+	}
+	if len(args) == 1 {
+		shell = strings.ToLower(args[0])
+	}
+	if shell != "bash" && shell != "powershell" {
+		return fmt.Errorf("unsupported shell %q", shell)
+	}
 	active, err := loadActiveEnvironment()
 	if err != nil {
 		return err
 	}
-	if runtime.GOOS == "windows" {
+	if shell == "powershell" {
 		fmt.Printf("$env:ANTHROPIC_BASE_URL = %s\n$env:ANTHROPIC_AUTH_TOKEN = %s\n", powershellQuote(active.AnthropicBaseURL), powershellQuote(active.AnthropicAuthToken))
 		return nil
 	}
@@ -718,7 +731,7 @@ func printShellInit(args []string) error {
   local ks_status=$?
   if [ "$ks_status" -eq 0 ] && [ "$1" = "aikeys" ]; then
     case "$2" in
-      ""|switch|--*) eval "$(command %s env)" ;;
+      ""|switch|--*) eval "$(command %s env bash)" ;;
     esac
   fi
   return "$ks_status"
@@ -733,7 +746,7 @@ func printShellInit(args []string) error {
   & $ksBinary @args
   $ksStatus = $LASTEXITCODE
   if ($ksStatus -eq 0 -and $args.Count -ge 1 -and $args[0] -eq 'aikeys' -and ($args.Count -eq 1 -or $args[1] -eq 'switch' -or $args[1].StartsWith('-'))) {
-    & $ksBinary env | Invoke-Expression
+    & $ksBinary env powershell | Invoke-Expression
   }
   $global:LASTEXITCODE = $ksStatus
 }
