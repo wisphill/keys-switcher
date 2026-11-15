@@ -544,6 +544,13 @@ func configFile(value, repo string) string {
 }
 
 func userConfigPath() string {
+	if runtime.GOOS == "windows" {
+		programData := os.Getenv("ProgramData")
+		if programData == "" {
+			programData = `C:\ProgramData`
+		}
+		return filepath.Join(programData, toolName, "config.yaml")
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(".", ".keys-switcher.yaml")

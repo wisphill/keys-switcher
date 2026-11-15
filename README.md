@@ -30,7 +30,13 @@ macOS, or `ks.exe uninstall` on Windows (it also prompts for UAC when needed).
 
 ## Configuration
 
-Copy `keys-switcher.example.yaml` somewhere private. The profile remote is a Go template and can use `{{.APIKey}}`.
+By default, macOS/Linux uses `~/.ks/config.yaml`. Windows uses the machine-wide
+`C:\ProgramData\keys-switcher\config.yaml`, so every Windows user runs against
+the same key profiles. Create or modify that file from an Administrator
+PowerShell, or pass `--config FILE` to use a different config. A repository
+local `.keys-switcher.yaml` still takes precedence.
+
+Copy `keys-switcher.example.yaml` to the chosen location. The profile remote is a Go template and can use `{{.APIKey}}`.
 
 ```yaml
 default_profile: primary
@@ -62,7 +68,8 @@ an interactive terminal; use `ks aikeys switch PROFILE` for scripts and CI.
 ### Add a key interactively
 
 `add` asks for an origin URL and API key, creates a non-secret profile name,
-and creates a private config directory and file at `~/.ks/config.yaml`:
+and creates the default config directory and file. On Windows, run it from an
+Administrator PowerShell to write the machine-wide config:
 
 ```sh
 ks aikeys add
