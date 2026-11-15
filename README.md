@@ -17,15 +17,16 @@ To install the currently running binary for every user on a machine:
 # macOS (requires an administrator account)
 sudo ./ks install
 
-# Windows: start an Administrator PowerShell, then
+# Windows: `ks install` shows a UAC prompt when needed.
 .\ks.exe install
 ```
 
 This installs `ks` at `/usr/local/bin/ks` on macOS and at
 `C:\Program Files\keys-switcher\ks.exe` on Windows. The Windows command adds
-that directory to the machine-wide `PATH`; new terminals see it immediately.
+that directory to the machine-wide `PATH` and notifies Windows of the
+environment change; newly opened terminals see it immediately.
 Remove it with the corresponding elevated command: `sudo ks uninstall` on
-macOS, or `ks.exe uninstall` in Administrator PowerShell on Windows.
+macOS, or `ks.exe uninstall` on Windows (it also prompts for UAC when needed).
 
 ## Configuration
 

@@ -838,6 +838,12 @@ func gitRunWithBackup(repo string, backup BackupFile, args ...string) error {
 }
 
 func install() error {
+	if runtime.GOOS == "windows" {
+		relaunched, err := ensureWindowsMachineScope("install")
+		if err != nil || relaunched {
+			return err
+		}
+	}
 	target, err := installPath()
 	if err != nil {
 		return err
@@ -855,6 +861,12 @@ func install() error {
 }
 
 func uninstall() error {
+	if runtime.GOOS == "windows" {
+		relaunched, err := ensureWindowsMachineScope("uninstall")
+		if err != nil || relaunched {
+			return err
+		}
+	}
 	target, err := installPath()
 	if err != nil {
 		return err
@@ -919,17 +931,56 @@ func copyCurrentExecutable(target string) error {
 
 func updateWindowsMachinePath(directory string, add bool) error {
 	quotedDir := strings.ReplaceAll(directory, "'", "''")
+	const notifyPathChange = `
+$signature = @'
+[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);
+'@
+$native = Add-Type -MemberDefinition $signature -Name 'KeysSwitcherNative' -Namespace 'KeysSwitcher' -PassThru
+$result = [UIntPtr]::Zero
+[void]$native::SendMessageTimeout([IntPtr]0xffff, 0x001a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result)
+`
 	if add {
-		return exec.Command("powershell", "-NoProfile", "-Command", "$p=[Environment]::GetEnvironmentVariable('Path','Machine'); if (($p -split ';') -notcontains '"+quotedDir+"') {[Environment]::SetEnvironmentVariable('Path',($p.TrimEnd(';')+';"+quotedDir+"'),'Machine')}").Run()
+		script := "$p=[Environment]::GetEnvironmentVariable('Path','Machine'); if (($p -split ';') -notcontains '" + quotedDir + "') {[Environment]::SetEnvironmentVariable('Path',($p.TrimEnd(';')+';" + quotedDir + "'),'Machine'); " + notifyPathChange + "}"
+		return exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Run()
 	}
-	return exec.Command("powershell", "-NoProfile", "-Command", "$p=[Environment]::GetEnvironmentVariable('Path','Machine'); [Environment]::SetEnvironmentVariable('Path',(($p -split ';' | Where-Object {$_ -and $_ -ne '"+quotedDir+"'}) -join ';'),'Machine')").Run()
+	script := "$p=[Environment]::GetEnvironmentVariable('Path','Machine'); [Environment]::SetEnvironmentVariable('Path',(($p -split ';' | Where-Object {$_ -and $_ -ne '" + quotedDir + "'}) -join ';'),'Machine'); " + notifyPathChange
+	return exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Run()
+}
+
+// ensureWindowsMachineScope relaunches this executable through UAC when it
+// needs to write Program Files or the machine-wide PATH. The bool is true
+// when the elevated child has already handled the requested operation.
+func ensureWindowsMachineScope(command string) (bool, error) {
+	const administratorCheck = "$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent()); $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", administratorCheck).Output()
+	if err != nil {
+		return false, fmt.Errorf("check Windows Administrator permission: %w", err)
+	}
+	if strings.EqualFold(strings.TrimSpace(string(out)), "true") {
+		return false, nil
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return false, err
+	}
+	fmt.Println("Requesting Administrator permission for a machine-wide operation...")
+	// Start-Process with RunAs shows the standard UAC prompt. Waiting here
+	// preserves the elevated child command's exit status for the caller.
+	script := "$process = Start-Process -FilePath " + powershellQuote(executable) + " -ArgumentList " + powershellQuote(command) + " -Verb RunAs -Wait -PassThru; exit $process.ExitCode"
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return false, fmt.Errorf("Windows Administrator permission was declined or %s failed: %w", command, err)
+	}
+	return true, nil
 }
 
 func windowsQuote(value string) string { return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"` }
 
 func installPermissionError(err error) error {
 	if runtime.GOOS == "windows" {
-		return fmt.Errorf("system-wide installation requires Administrator PowerShell: %w", err)
+		return fmt.Errorf("system-wide installation requires Administrator permission; accept the UAC prompt: %w", err)
 	}
 	return fmt.Errorf("system-wide installation requires root; run: sudo ks install (or sudo ks uninstall): %w", err)
 }
